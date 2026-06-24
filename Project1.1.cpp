@@ -89,3 +89,36 @@ LockFreeHashTable* lfht_create(uint32_t size, uint32_t(*hash_func)(const char*, 
 
     return ht;                                   /* Возвращаем указатель на таблицу */
 }
+
+/*
+ * Поиск ключа в цепочке
+ */
+LockFreeNode* lfht_find_in_chain(LockFreeNode* head, const char* key) {
+    LockFreeNode* curr = head;                   /* Начинаем с головы списка */
+
+    while (curr) {                               /* Пока есть узлы */
+        char* curr_key = curr->key;              /* Сохраняем ключ локально */
+        if (curr_key != NULL && strcmp(curr_key, key) == 0) { /* Если ключ совпадает */
+            return curr;                         /* Возвращаем узел */
+        }
+        curr = curr->next;                       /* Переходим к следующему узлу */
+    }
+
+    return NULL;                                 /* Ключ не найден */
+}
+
+/*
+ * Поиск значения по ключу
+ */
+bool lfht_get(LockFreeHashTable* ht, const char* key, int* out_value) {
+    uint32_t index = ht->hash_func(key, ht->size) & ht->mask; /* Вычисляем индекс */
+    LockFreeNode* head = ht->buckets[index];     /* Получаем голову списка */
+    LockFreeNode* node = lfht_find_in_chain(head, key); /* Ищем ключ */
+
+    if (node && node->key != NULL) {             /* Если нашли и узел не удалён */
+        if (out_value) *out_value = node->value; /* Сохраняем значение */
+        return true;                             /* Успешно */
+    }
+
+    return false;                                /* Не найдено */
+}
