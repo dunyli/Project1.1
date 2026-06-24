@@ -401,3 +401,99 @@ void bht_destroy(BlockingHashTable* ht) {
     DeleteCriticalSection(&ht->mutex);           /* Удаляем критическую секцию */
     free(ht);                                    /* Освобождаем таблицу */
 }
+
+#define NUM_KEYS 1000                            /* Количество ключей для тестов */
+char test_keys[NUM_KEYS][32];                    /* Массив предварительно сгенерированных ключей */
+
+
+
+
+/*
+    РАБОТА С ПОТОКАМИ
+*/
+
+
+/*
+ * Генерация тестовых ключей
+ */
+void generate_test_keys() {
+    for (int i = 0; i < NUM_KEYS; i++) {         /* Проходим по всем ключам */
+        snprintf(test_keys[i], sizeof(test_keys[i]), "key_%d", i); /* Создаём ключ */
+    }
+}
+
+/*
+ * Данные для потоков неблокирующей версии
+ */
+typedef struct {
+    LockFreeHashTable* ht;                       /* Указатель на таблицу */
+    int thread_id;                               /* ID потока */
+    int operations;                              /* Количество операций */
+} LFThreadData;
+
+/*
+ * Данные для потоков блокирующей версии
+ */
+typedef struct {
+    BlockingHashTable* ht;                       /* Указатель на таблицу */
+    int thread_id;                               /* ID потока */
+    int operations;                              /* Количество операций */
+} BThreadData;
+
+/*
+ * Поток для неблокирующей версии
+ */
+unsigned int __stdcall lf_thread_worker_fast(void* arg) {
+    LFThreadData* data = (LFThreadData*)arg;     /* Получаем данные */
+    LockFreeHashTable* ht = data->ht;            /* Получаем таблицу */
+    int ops = data->operations;                  /* Количество операций */
+
+    for (int i = 0; i < ops; i++) {              /* Выполняем операции */
+        int key_index = rand() % NUM_KEYS;       /* Случайный ключ */
+        const char* key = test_keys[key_index];  /* Берём ключ из массива */
+
+        int op = rand() % 3;                     /* Случайная операция */
+        int val = rand() % 100;                  /* Случайное значение */
+
+        switch (op) {
+        case 0: lfht_insert(ht, key, val); break; /* Вставка */
+        case 1: lfht_delete(ht, key); break;     /* Удаление */
+        case 2: {                                /* Поиск */
+            int found_val;
+            lfht_get(ht, key, &found_val);
+            break;
+        }
+        }
+    }
+
+    return 0;                                    /* Завершение потока */
+}
+
+/*
+ * Поток для блокирующей версии
+ */
+unsigned int __stdcall b_thread_worker_fast(void* arg) {
+    BThreadData* data = (BThreadData*)arg;       /* Получаем данные */
+    BlockingHashTable* ht = data->ht;            /* Получаем таблицу */
+    int ops = data->operations;                  /* Количество операций */
+
+    for (int i = 0; i < ops; i++) {              /* Выполняем операции */
+        int key_index = rand() % NUM_KEYS;       /* Случайный ключ */
+        const char* key = test_keys[key_index];  /* Берём ключ из массива */
+
+        int op = rand() % 3;                     /* Случайная операция */
+        int val = rand() % 100;                  /* Случайное значение */
+
+        switch (op) {
+        case 0: bht_insert(ht, key, val); break; /* Вставка с блокировкой */
+        case 1: bht_delete(ht, key); break;      /* Удаление с блокировкой */
+        case 2: {                                /* Поиск с блокировкой */
+            int found_val;
+            bht_get(ht, key, &found_val);
+            break;
+        }
+        }
+    }
+
+    return 0;                                    /* Завершение потока */
+}
