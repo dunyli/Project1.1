@@ -497,3 +497,128 @@ unsigned int __stdcall b_thread_worker_fast(void* arg) {
 
     return 0;                                    /* Завершение потока */
 }
+
+/*
+ * Тест базовых операций
+ */
+void test_lockfree_hash_table() {
+    printf("\n=== ТЕСТ НЕБЛОКИРУЮЩЕЙ ХЕШ-ТАБЛИЦЫ ===\n");
+
+    LockFreeHashTable* ht = lfht_create(16, NULL); /* Создаём таблицу */
+
+    printf("Одиночные операции:\n");
+    lfht_insert(ht, "test1", 100);               /* Вставляем */
+    lfht_insert(ht, "test2", 200);               /* Вставляем */
+    lfht_insert(ht, "test3", 300);               /* Вставляем */
+
+    lfht_print(ht);                              /* Печатаем */
+
+    int val;                                     /* Переменная для значения */
+    if (lfht_get(ht, "test2", &val)) {           /* Ищем */
+        printf("Найдено test2: %d\n", val);      /* Выводим */
+    }
+
+    lfht_delete(ht, "test2");                    /* Удаляем */
+    printf("После удаления test2:\n");
+    lfht_print(ht);                              /* Печатаем */
+
+    lfht_destroy(ht);                            /* Освобождаем память */
+}
+
+/*
+ * Тест производительности
+ */
+void test_performance_comparison_fast() {
+    printf("\n=== СРАВНЕНИЕ ПРОИЗВОДИТЕЛЬНОСТИ ===\n");
+
+    const int NUM_THREADS = 8;                   /* Количество потоков */
+    const int OPS_PER_THREAD = 200000;           /* Операций на поток */
+
+    generate_test_keys();                        /* Генерируем ключи */
+
+    /* Блокирующая версия */
+    printf("\n1. Блокирующая версия (с критическими секциями):\n");
+    printf("   Потоков: %d, операций на поток: %d\n", NUM_THREADS, OPS_PER_THREAD);
+    BlockingHashTable* bht = bht_create(1024);   /* Создаём таблицу */
+
+    HANDLE* threads1 = (HANDLE*)malloc(NUM_THREADS * sizeof(HANDLE)); /* Массив потоков */
+    BThreadData* data1 = (BThreadData*)malloc(NUM_THREADS * sizeof(BThreadData)); /* Данные */
+
+    clock_t start1 = clock();                    /* Засекаем время */
+
+    for (int i = 0; i < NUM_THREADS; i++) {      /* Запускаем потоки */
+        data1[i].ht = bht;                       /* Передаём таблицу */
+        data1[i].thread_id = i;                  /* ID потока */
+        data1[i].operations = OPS_PER_THREAD;    /* Операции */
+        threads1[i] = (HANDLE)_beginthreadex(NULL, 0, b_thread_worker_fast, &data1[i], 0, NULL);
+    }
+
+    WaitForMultipleObjects(NUM_THREADS, threads1, TRUE, INFINITE); /* Ждём завершения */
+    for (int i = 0; i < NUM_THREADS; i++) {
+        CloseHandle(threads1[i]);                /* Закрываем дескрипторы */
+    }
+
+    clock_t end1 = clock();                      /* Засекаем время */
+    double time1 = (double)(end1 - start1) / CLOCKS_PER_SEC; /* Вычисляем время */
+    printf("  Время: %.3f сек, элементов: %u\n", time1, bht->count);
+
+    free(threads1);                              /* Освобождаем память */
+    free(data1);                                 /* Освобождаем память */
+    bht_destroy(bht);                            /* Уничтожаем таблицу */
+
+    /* Неблокирующая версия */
+    printf("\n2. Неблокирующая версия (CAS):\n");
+    printf("   Потоков: %d, операций на поток: %d\n", NUM_THREADS, OPS_PER_THREAD);
+    LockFreeHashTable* lht = lfht_create(1024, NULL); /* Создаём таблицу */
+
+    HANDLE* threads2 = (HANDLE*)malloc(NUM_THREADS * sizeof(HANDLE)); /* Массив потоков */
+    LFThreadData* data2 = (LFThreadData*)malloc(NUM_THREADS * sizeof(LFThreadData)); /* Данные */
+
+    clock_t start2 = clock();                    /* Засекаем время */
+
+    for (int i = 0; i < NUM_THREADS; i++) {      /* Запускаем потоки */
+        data2[i].ht = lht;                       /* Передаём таблицу */
+        data2[i].thread_id = i;                  /* ID потока */
+        data2[i].operations = OPS_PER_THREAD;    /* Операции */
+        threads2[i] = (HANDLE)_beginthreadex(NULL, 0, lf_thread_worker_fast, &data2[i], 0, NULL);
+    }
+
+    WaitForMultipleObjects(NUM_THREADS, threads2, TRUE, INFINITE); /* Ждём завершения */
+    for (int i = 0; i < NUM_THREADS; i++) {
+        CloseHandle(threads2[i]);                /* Закрываем дескрипторы */
+    }
+
+    clock_t end2 = clock();                      /* Засекаем время */
+    double time2 = (double)(end2 - start2) / CLOCKS_PER_SEC; /* Вычисляем время */
+    printf("  Время: %.3f сек, элементов: %ld\n", time2, lht->count);
+
+    free(threads2);                              /* Освобождаем память */
+    free(data2);                                 /* Освобождаем память */
+    lfht_destroy(lht);                           /* Уничтожаем таблицу */
+
+    /* Выводим результат сравнения */
+    if (time1 > 0 && time2 > 0) {
+        double speedup = time1 / time2;          /* Вычисляем ускорение */
+        printf("\n------------------------------------------------\n");
+        printf("Ускорение неблокирующей версии: %.2fx\n", speedup);
+        if (speedup > 1.5) {
+            printf("Неблокирующая версия ЗНАЧИТЕЛЬНО быстрее!\n");
+        }
+        else if (speedup > 1.1) {
+            printf("Неблокирующая версия немного быстрее.\n");
+        }
+        else {
+            printf("Разница в производительности минимальна.\n");
+        }
+        printf("------------------------------------------------\n");
+    }
+}
+
+/*
+ * Запуск всех тестов
+ */
+void run_all_lockfree_tests() {
+    test_lockfree_hash_table();                  /* Тест базовых операций */
+    test_performance_comparison_fast();          /* Тест производительности */
+}
+
