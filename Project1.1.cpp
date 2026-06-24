@@ -183,3 +183,63 @@ bool lfht_insert(LockFreeHashTable* ht, const char* key, int value) {
         /* Цикл повторится с обновлённым head */
     }
 }
+
+/*
+ * Удаление ключа
+ */
+bool lfht_delete(LockFreeHashTable* ht, const char* key) {
+    uint32_t index = ht->hash_func(key, ht->size) & ht->mask; /* Вычисляем индекс */
+
+    while (true) {                               /* Цикл до успешного удаления */
+        LockFreeNode* head = ht->buckets[index]; /* Голова списка */
+        LockFreeNode* prev = NULL;               /* Предыдущий узел */
+        LockFreeNode* curr = head;               /* Текущий узел */
+
+        while (curr) {                           /* Ищем узел для удаления */
+            char* curr_key = curr->key;          /* Сохраняем ключ локально */
+            if (curr_key != NULL && strcmp(curr_key, key) == 0) { /* Нашли */
+                break;
+            }
+            prev = curr;                         /* Запоминаем предыдущий */
+            curr = curr->next;                   /* Переходим дальше */
+        }
+
+        if (!curr) return false;                 /* Ключ не найден */
+
+        if (curr->key == NULL) {                 /* Если узел уже удалён */
+            continue;                            /* Пробуем сначала */
+        }
+
+        if (prev == NULL) {                      /* Удаляем голову */
+            LockFreeNode* next = curr->next;     /* Следующий узел */
+            if (InterlockedCompareExchangePointer( /* CAS-операция */
+                (PVOID*)&ht->buckets[index],     /* Куда записываем */
+                next,                            /* Новое значение */
+                curr) == curr) {                 /* Проверяем что было curr */
+                char* old_key = curr->key;       /* Сохраняем ключ */
+                curr->key = NULL;                /* Помечаем как удалённый */
+                if (old_key != NULL) {           /* Если ключ не NULL */
+                    free(old_key);               /* Освобождаем ключ */
+                }
+                InterlockedDecrement(&ht->count); /* Уменьшаем счётчик */
+                return true;                     /* Успешно */
+            }
+        }
+        else {                                   /* Удаляем из середины или конца */
+            LockFreeNode* next = curr->next;     /* Следующий узел */
+            if (InterlockedCompareExchangePointer( /* CAS-операция */
+                (PVOID*)&prev->next,             /* Куда записываем */
+                next,                            /* Новое значение */
+                curr) == curr) {                 /* Проверяем что было curr */
+                char* old_key = curr->key;       /* Сохраняем ключ */
+                curr->key = NULL;                /* Помечаем как удалённый */
+                if (old_key != NULL) {           /* Если ключ не NULL */
+                    free(old_key);               /* Освобождаем ключ */
+                }
+                InterlockedDecrement(&ht->count); /* Уменьшаем счётчик */
+                return true;                     /* Успешно */
+            }
+        }
+        /* CAS не удался - пробуем снова */
+    }
+}
