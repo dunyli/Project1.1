@@ -302,3 +302,83 @@ BlockingHashTable* bht_create(uint32_t size) {
     InitializeCriticalSection(&ht->mutex);       /* Инициализируем критическую секцию */
     return ht;                                   /* Возвращаем таблицу */
 }
+
+
+/*
+ * Вставка в блокирующую таблицу
+ */
+void bht_insert(BlockingHashTable* ht, const char* key, int value) {
+    EnterCriticalSection(&ht->mutex);            /* Входим в критическую секцию */
+
+    uint32_t index = ht->hash_func(key, ht->size) & ht->mask; /* Вычисляем индекс */
+    LockFreeNode* curr = ht->buckets[index];     /* Получаем голову */
+
+    while (curr) {                               /* Ищем ключ */
+        if (strcmp(curr->key, key) == 0) {       /* Если нашли */
+            curr->value = value;                 /* Обновляем значение */
+            LeaveCriticalSection(&ht->mutex);    /* Выходим из секции */
+            return;                              /* Завершаем */
+        }
+        curr = curr->next;                       /* Переходим дальше */
+    }
+
+    LockFreeNode* node = create_lf_node(key, value); /* Создаём узел */
+    node->next = ht->buckets[index];             /* Вставляем в начало */
+    ht->buckets[index] = node;                   /* Обновляем голову */
+    ht->count++;                                 /* Увеличиваем счётчик */
+
+    LeaveCriticalSection(&ht->mutex);            /* Выходим из секции */
+}
+
+/*
+ * Поиск в блокирующей таблице
+ */
+bool bht_get(BlockingHashTable* ht, const char* key, int* out_value) {
+    EnterCriticalSection(&ht->mutex);            /* Входим в секцию */
+
+    uint32_t index = ht->hash_func(key, ht->size) & ht->mask; /* Индекс */
+    LockFreeNode* curr = ht->buckets[index];     /* Голова списка */
+
+    while (curr) {                               /* Ищем ключ */
+        if (strcmp(curr->key, key) == 0) {       /* Если нашли */
+            if (out_value) *out_value = curr->value; /* Сохраняем значение */
+            LeaveCriticalSection(&ht->mutex);    /* Выходим из секции */
+            return true;                         /* Успешно */
+        }
+        curr = curr->next;                       /* Переходим дальше */
+    }
+
+    LeaveCriticalSection(&ht->mutex);            /* Выходим из секции */
+    return false;                                /* Не найдено */
+}
+
+/*
+ * Удаление в блокирующей таблице
+ */
+void bht_delete(BlockingHashTable* ht, const char* key) {
+    EnterCriticalSection(&ht->mutex);            /* Входим в секцию */
+
+    uint32_t index = ht->hash_func(key, ht->size) & ht->mask; /* Индекс */
+    LockFreeNode* curr = ht->buckets[index];     /* Голова списка */
+    LockFreeNode* prev = NULL;                   /* Предыдущий узел */
+
+    while (curr) {                               /* Ищем ключ */
+        if (strcmp(curr->key, key) == 0) {       /* Если нашли */
+            if (prev) {                          /* Если не голова */
+                prev->next = curr->next;         /* Перекидываем указатель */
+            }
+            else {                               /* Если голова */
+                ht->buckets[index] = curr->next; /* Обновляем голову */
+            }
+            free(curr->key);                     /* Освобождаем ключ */
+            free(curr);                          /* Освобождаем узел */
+            ht->count--;                         /* Уменьшаем счётчик */
+            break;                               /* Выходим из цикла */
+        }
+        prev = curr;                             /* Запоминаем предыдущий */
+        curr = curr->next;                       /* Переходим дальше */
+    }
+
+    LeaveCriticalSection(&ht->mutex);            /* Выходим из секции */
+}
+
