@@ -243,3 +243,23 @@ bool lfht_delete(LockFreeHashTable* ht, const char* key) {
         /* CAS не удался - пробуем снова */
     }
 }
+
+/*
+ * Освобождение памяти таблицы
+ */
+void lfht_destroy(LockFreeHashTable* ht) {
+    if (!ht) return;                             /* Проверка */
+
+    for (uint32_t i = 0; i < ht->size; i++) {    /* Проходим по всем корзинам */
+        LockFreeNode* curr = ht->buckets[i];     /* Начинаем с головы */
+        while (curr) {                           /* Пока есть узлы */
+            LockFreeNode* next = curr->next;     /* Сохраняем следующий */
+            if (curr->key) free(curr->key);      /* Освобождаем ключ */
+            free(curr);                          /* Освобождаем узел */
+            curr = next;                         /* Переходим к следующему */
+        }
+    }
+
+    free(ht->buckets);                           /* Освобождаем корзины */
+    free(ht);                                    /* Освобождаем таблицу */
+}
