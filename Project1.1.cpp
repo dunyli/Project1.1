@@ -263,3 +263,28 @@ void lfht_destroy(LockFreeHashTable* ht) {
     free(ht->buckets);                           /* Освобождаем корзины */
     free(ht);                                    /* Освобождаем таблицу */
 }
+
+/*
+ * Печать таблицы
+ */
+void lfht_print(LockFreeHashTable* ht) {
+    printf("Lock-Free HashTable (size=%u, count=%ld):\n", ht->size, ht->count);
+
+    for (uint32_t i = 0; i < ht->size; i++) {    /* Проходим по корзинам */
+        LockFreeNode* curr = ht->buckets[i];     /* Начинаем с головы */
+        if (curr) {                              /* Если есть элементы */
+            printf("  [%u] ", i);                /* Выводим номер корзины */
+            while (curr) {                       /* Проходим по узлам */
+                char* curr_key = curr->key;      /* Сохраняем ключ локально */
+                if (curr_key != NULL) {          /* Если ключ есть */
+                    printf("'%s':%d ", curr_key, curr->value); /* Выводим данные */
+                }
+                else {
+                    printf("[DELETED] ");        /* Удалённый узел */
+                }
+                curr = curr->next;               /* Переходим к следующему */
+            }
+            printf("\n");                        /* Конец строки */
+        }
+    }
+}
