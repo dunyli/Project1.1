@@ -142,3 +142,44 @@ LockFreeNode* create_lf_node(const char* key, int value) {
 
     return node;                                 /* Возвращаем узел */
 }
+
+/*
+ * Вставка ключа и значения
+ */
+bool lfht_insert(LockFreeHashTable* ht, const char* key, int value) {
+    uint32_t index = ht->hash_func(key, ht->size) & ht->mask; /* Вычисляем индекс */
+
+    while (true) {                               /* Цикл до успешной вставки */
+        LockFreeNode* head = ht->buckets[index]; /* Текущая голова списка */
+
+        LockFreeNode* curr = head;               /* Начинаем поиск с головы */
+        while (curr) {                           /* Проверяем все узлы */
+            char* curr_key = curr->key;          /* Сохраняем ключ локально */
+            if (curr_key != NULL && strcmp(curr_key, key) == 0) { /* Если ключ есть */
+                if (curr->key != NULL) {         /* Проверяем что не удалён */
+                    curr->value = value;         /* Обновляем значение */
+                    return true;                 /* Успешно */
+                }
+                break;                           /* Выходим из цикла */
+            }
+            curr = curr->next;                   /* Переходим к следующему */
+        }
+
+        LockFreeNode* new_node = create_lf_node(key, value); /* Создаём узел */
+        if (!new_node) return false;             /* Проверка */
+
+        new_node->next = head;                   /* Вставляем в начало списка */
+
+        if (InterlockedCompareExchangePointer(   /* CAS-операция */
+            (PVOID*)&ht->buckets[index],         /* Куда записываем */
+            new_node,                            /* Новое значение */
+            head) == head) {                     /* Проверяем что было head */
+            InterlockedIncrement(&ht->count);    /* Увеличиваем счётчик */
+            return true;                         /* Успешно */
+        }
+
+        free(new_node->key);                     /* Освобождаем ключ */
+        free(new_node);                          /* Освобождаем узел */
+        /* Цикл повторится с обновлённым head */
+    }
+}
