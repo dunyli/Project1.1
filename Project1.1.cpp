@@ -122,3 +122,23 @@ bool lfht_get(LockFreeHashTable* ht, const char* key, int* out_value) {
 
     return false;                                /* Не найдено */
 }
+
+/*
+ * Создание нового узла
+ */
+LockFreeNode* create_lf_node(const char* key, int value) {
+    LockFreeNode* node = (LockFreeNode*)malloc(sizeof(LockFreeNode)); /* Выделяем память */
+    if (!node) return NULL;                      /* Проверка */
+
+    node->key = (char*)malloc(strlen(key) + 1);  /* Выделяем память под ключ */
+    if (!node->key) {                            /* Проверка */
+        free(node);                              /* Освобождаем узел */
+        return NULL;
+    }
+    memcpy(node->key, key, strlen(key) + 1);     /* Копируем ключ */
+
+    node->value = value;                         /* Устанавливаем значение */
+    node->next = NULL;                           /* Следующий узел пока не известен */
+
+    return node;                                 /* Возвращаем узел */
+}
