@@ -288,3 +288,17 @@ void lfht_print(LockFreeHashTable* ht) {
         }
     }
 }
+
+/*
+ * Создание блокирующей хеш-таблицы
+ */
+BlockingHashTable* bht_create(uint32_t size) {
+    BlockingHashTable* ht = (BlockingHashTable*)malloc(sizeof(BlockingHashTable)); /* Выделяем память */
+    ht->size = size;                             /* Сохраняем размер */
+    ht->mask = size - 1;                         /* Вычисляем маску */
+    ht->hash_func = fnv1a_hash_lf;               /* Устанавливаем хеш-функцию */
+    ht->count = 0;                               /* Обнуляем счётчик */
+    ht->buckets = (LockFreeNode**)calloc(size, sizeof(LockFreeNode*)); /* Выделяем корзины */
+    InitializeCriticalSection(&ht->mutex);       /* Инициализируем критическую секцию */
+    return ht;                                   /* Возвращаем таблицу */
+}
