@@ -382,3 +382,22 @@ void bht_delete(BlockingHashTable* ht, const char* key) {
     LeaveCriticalSection(&ht->mutex);            /* Выходим из секции */
 }
 
+/*
+ * Освобождение памяти блокирующей таблицы
+ */
+void bht_destroy(BlockingHashTable* ht) {
+    if (!ht) return;                             /* Проверка */
+
+    for (uint32_t i = 0; i < ht->size; i++) {    /* Проходим по корзинам */
+        LockFreeNode* curr = ht->buckets[i];     /* Начинаем с головы */
+        while (curr) {                           /* Пока есть узлы */
+            LockFreeNode* next = curr->next;     /* Сохраняем следующий */
+            free(curr->key);                     /* Освобождаем ключ */
+            free(curr);                          /* Освобождаем узел */
+            curr = next;                         /* Переходим дальше */
+        }
+    }
+    free(ht->buckets);                           /* Освобождаем корзины */
+    DeleteCriticalSection(&ht->mutex);           /* Удаляем критическую секцию */
+    free(ht);                                    /* Освобождаем таблицу */
+}
